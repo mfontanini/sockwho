@@ -1,0 +1,2 @@
+[workspace]
+members = ["sockwho", "sockwho-common", "sockwho-macros"]
