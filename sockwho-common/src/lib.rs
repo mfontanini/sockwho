@@ -7,13 +7,21 @@ pub struct SockaddrEvent {
     pub fd: u32,
     pub address: [u8; 16],
     pub port: u16,
-    pub family: u8,
+    pub family: AddressFamily,
     pub syscall: Syscall,
     pub return_value: i32,
     pub command: [u8; 16],
 }
 
 #[derive(Clone, Debug, Copy)]
+#[repr(u8)]
+pub enum AddressFamily {
+    Ipv4,
+    Ipv6,
+}
+
+#[derive(Clone, Debug, Copy)]
+#[cfg_attr(feature = "user", derive(Debug))]
 #[repr(u8)]
 pub enum Syscall {
     Bind,

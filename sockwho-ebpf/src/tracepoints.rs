@@ -5,7 +5,7 @@ use aya_bpf::{
     maps::{HashMap, PerfEventArray},
     programs::TracePointContext,
 };
-use sockwho_common::{HandlerResult, SockaddrEvent, Syscall};
+use sockwho_common::{AddressFamily, HandlerResult, SockaddrEvent, Syscall};
 use sockwho_macros::sockwho_tracepoint;
 
 #[map]
@@ -42,7 +42,12 @@ fn sys_enter_bind(ctx: TracePointContext) -> HandlerResult {
     }
     let sockaddr: *const u8 = ctx.read_field(24)?;
     let family: u16 = unsafe { bpf_probe_read_user(sockaddr as *const u16) }?;
-    let (address, port) = read_sockaddr(family, sockaddr)?;
+    let family = match family {
+        AF_INET => AddressFamily::Ipv4,
+        AF_INET6 => AddressFamily::Ipv6,
+        _ => return Err(1.into()),
+    };
+    let (address, port) = read_sockaddr(&family, sockaddr)?;
     let command = bpf_get_current_comm()?;
 
     let event = SockaddrEvent {
@@ -50,7 +55,7 @@ fn sys_enter_bind(ctx: TracePointContext) -> HandlerResult {
         fd: fd as u32,
         address,
         port,
-        family: family as u8,
+        family,
         syscall: Syscall::Bind,
         return_value: 0,
         command,
@@ -74,18 +79,17 @@ fn sys_exit_bind(ctx: TracePointContext) -> HandlerResult {
     Ok(())
 }
 
-fn read_sockaddr(address_family: u16, sockaddr: *const u8) -> Result<([u8; 16], u16), i64> {
-    match address_family {
-        AF_INET => {
+fn read_sockaddr(family: &AddressFamily, sockaddr: *const u8) -> Result<([u8; 16], u16), i64> {
+    match family {
+        AddressFamily::Ipv4 => {
             let sockaddr = unsafe { bpf_probe_read_user(sockaddr as *const SockaddrIn) }?;
             let a = &sockaddr.address;
             let address = [a[0], a[1], a[2], a[3], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
             Ok((address, sockaddr.port))
         }
-        AF_INET6 => {
+        AddressFamily::Ipv6 => {
             let sockaddr = unsafe { bpf_probe_read_user(sockaddr as *const SockaddrIn6) }?;
             Ok((sockaddr.address, sockaddr.port))
         }
-        _ => return Err(1),
     }
 }
