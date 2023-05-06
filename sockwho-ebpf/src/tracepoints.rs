@@ -1,4 +1,7 @@
-use crate::context::{TracePointContextWrapper, Wrap};
+use crate::{
+    context::{TracePointContextWrapper, Wrap},
+    utils::as_pid,
+};
 use aya_bpf::{
     helpers::{bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_probe_read_user},
     macros::map,
@@ -54,7 +57,7 @@ fn sys_enter_bind(ctx: TracePointContext) -> HandlerResult {
     let command = bpf_get_current_comm()?;
 
     let event = SockaddrEvent {
-        pid: pid as u32,
+        pid: as_pid(pid),
         fd: fd as u32,
         address,
         port,
@@ -105,7 +108,7 @@ fn inet_sock_set_state(ctx: TracePointContext) -> HandlerResult {
         dst_address,
         old_state,
         new_state,
-        pid: pid as u32,
+        pid: as_pid(pid),
         command,
         _padding: 0,
     };
