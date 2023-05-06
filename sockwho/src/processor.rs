@@ -42,6 +42,7 @@ impl EventProcessor {
         let SockaddrEvent { pid, fd, address, port, family, syscall, return_value, command } = &event;
         let command = String::from_utf8_lossy(command);
         let address = parse_address(family, address);
+        let port = port.to_be();
         println!("{command} {syscall:?}({address}:{port}) = {return_value} [pid = {pid}, fd = {fd}]");
         Ok(())
     }
