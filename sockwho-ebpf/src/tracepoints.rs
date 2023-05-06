@@ -1,15 +1,18 @@
-use crate::context::Wrap;
+use crate::context::{TracePointContextWrapper, Wrap};
 use aya_bpf::{
     helpers::{bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_probe_read_user},
     macros::map,
     maps::{HashMap, PerfEventArray},
     programs::TracePointContext,
 };
-use sockwho_common::{AddressFamily, HandlerResult, SockaddrEvent, Syscall};
+use sockwho_common::{AddressFamily, HandlerResult, SockaddrEvent, SocketStateEvent, Syscall};
 use sockwho_macros::sockwho_tracepoint;
 
 #[map]
 static mut SOCKADDR_EVENTS: PerfEventArray<SockaddrEvent> = PerfEventArray::new(0);
+
+#[map]
+static mut SOCKET_STATE_EVENTS: PerfEventArray<SocketStateEvent> = PerfEventArray::new(0);
 
 #[map]
 static mut PID_EVENT: HashMap<u64, SockaddrEvent> = HashMap::with_max_entries(1024, 0);
@@ -73,8 +76,40 @@ fn sys_exit_bind(ctx: TracePointContext) -> HandlerResult {
     let pid = bpf_get_current_pid_tgid();
     let mut event = unsafe { &mut *PID_EVENT.get_ptr_mut(&pid).ok_or(1)? };
     event.return_value = return_value;
-
     unsafe { SOCKADDR_EVENTS.output(ctx.inner(), &event, 0) };
+
+    Ok(())
+}
+
+#[sockwho_tracepoint]
+fn inet_sock_set_state(ctx: TracePointContext) -> HandlerResult {
+    let ctx = ctx.wrap();
+    let pid = bpf_get_current_pid_tgid();
+    let old_state = ctx.read_field(16)?;
+    let new_state = ctx.read_field(20)?;
+    let src_port = ctx.read_field(24)?;
+    let dst_port = ctx.read_field(26)?;
+    let family = match ctx.read_field::<u16>(28)? {
+        AF_INET => AddressFamily::Ipv4,
+        AF_INET6 => AddressFamily::Ipv6,
+        _ => return Err(1.into()),
+    };
+    let (src_address, dst_address) = read_address_pair(&family, &ctx)?;
+    let command = bpf_get_current_comm()?;
+
+    let event = SocketStateEvent {
+        src_port,
+        dst_port,
+        family,
+        src_address,
+        dst_address,
+        old_state,
+        new_state,
+        pid: pid as u32,
+        command,
+        _padding: 0,
+    };
+    unsafe { SOCKET_STATE_EVENTS.output(ctx.inner(), &event, 0) };
 
     Ok(())
 }
@@ -91,5 +126,19 @@ fn read_sockaddr(family: &AddressFamily, sockaddr: *const u8) -> Result<([u8; 16
             let sockaddr = unsafe { bpf_probe_read_user(sockaddr as *const SockaddrIn6) }?;
             Ok((sockaddr.address, sockaddr.port))
         }
+    }
+}
+
+fn read_address_pair(family: &AddressFamily, ctx: &TracePointContextWrapper) -> Result<([u8; 16], [u8; 16]), u32> {
+    match family {
+        AddressFamily::Ipv4 => {
+            let s: [u8; 4] = ctx.read_field(32)?;
+            let d: [u8; 4] = ctx.read_field(36)?;
+            Ok((
+                [s[0], s[1], s[2], s[3], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                [d[0], d[1], d[2], d[3], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ))
+        }
+        AddressFamily::Ipv6 => Ok((ctx.read_field(40)?, ctx.read_field(56)?)),
     }
 }

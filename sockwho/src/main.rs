@@ -6,7 +6,7 @@ use sockwho::{
     monitor::{Monitor, MonitoredQueue},
     processor::{EventProcessor, EventProcessorConfig},
 };
-use sockwho_common::SockaddrEvent;
+use sockwho_common::{SockaddrEvent, SocketStateEvent};
 
 #[derive(Debug, Parser)]
 struct Opt {}
@@ -30,12 +30,16 @@ async fn main() -> Result<(), Error> {
     let mut attacher = ProbeAttacherBuilder::new(&mut bpf)
         .with_tracepoint("syscalls", "sys_enter_bind")
         .with_tracepoint("syscalls", "sys_exit_bind")
+        .with_tracepoint("sock", "inet_sock_set_state")
         .build();
     attacher.attach_tracepoints()?;
 
     let config = EventProcessorConfig { channel_size: 1024 };
     let processor = EventProcessor::new(config);
-    let queues = vec![MonitoredQueue::new::<SockaddrEvent>("SOCKADDR_EVENTS")];
+    let queues = vec![
+        MonitoredQueue::new::<SockaddrEvent>("SOCKADDR_EVENTS"),
+        MonitoredQueue::new::<SocketStateEvent>("SOCKET_STATE_EVENTS"),
+    ];
     let monitor = Monitor::new(processor.sender(), queues);
     monitor.launch(&bpf)?;
     processor.run().await;

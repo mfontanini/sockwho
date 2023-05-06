@@ -13,6 +13,21 @@ pub struct SockaddrEvent {
     pub command: [u8; 16],
 }
 
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct SocketStateEvent {
+    pub src_port: u16,
+    pub dst_port: u16,
+    pub family: AddressFamily,
+    pub _padding: u8,
+    pub old_state: u32,
+    pub new_state: u32,
+    pub pid: u32,
+    pub src_address: [u8; 16],
+    pub dst_address: [u8; 16],
+    pub command: [u8; 16],
+}
+
 #[derive(Clone, Debug, Copy)]
 #[repr(u8)]
 pub enum AddressFamily {

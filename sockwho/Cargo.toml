@@ -9,8 +9,10 @@ anyhow = "^1.0"
 aya = { version = "^0.11", features=["async_tokio"] }
 bytes = "^1.4"
 clap = { version = "^4.2", features = ["derive"] }
+enum-primitive-derive = "^0.2"
 env_logger = "0.10"
 log = "^0.4"
+num-traits = "^0.2"
 tokio = { version = "^1.28", features = ["macros", "rt", "rt-multi-thread", "net", "signal", "sync", "time"] }
 
 sockwho-common = { path = "../sockwho-common" }
