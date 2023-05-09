@@ -40,6 +40,9 @@ pub enum AddressFamily {
 #[repr(u8)]
 pub enum Syscall {
     Bind,
+    Connect,
+    RecvFrom,
+    SendTo,
 }
 
 pub struct HandlerError(i32);

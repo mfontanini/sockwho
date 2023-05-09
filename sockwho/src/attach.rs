@@ -1,4 +1,4 @@
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use aya::{programs::TracePoint, Bpf};
 
 /// Metadata about a tracepoint.
@@ -16,7 +16,11 @@ pub struct ProbeAttacher<'a> {
 impl<'a> ProbeAttacher<'a> {
     pub fn attach_tracepoints(&mut self) -> Result<(), Error> {
         for tracepoint in &self.tracepoints {
-            let program: &mut TracePoint = self.bpf.program_mut(&tracepoint.name).unwrap().try_into()?;
+            let program: &mut TracePoint = self
+                .bpf
+                .program_mut(&tracepoint.name)
+                .ok_or_else(|| anyhow!("program {} not found", tracepoint.name))?
+                .try_into()?;
             program.load()?;
             program.attach(&tracepoint.category, &tracepoint.name)?;
         }

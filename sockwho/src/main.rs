@@ -29,7 +29,13 @@ async fn main() -> Result<(), Error> {
 
     let mut attacher = ProbeAttacherBuilder::new(&mut bpf)
         .with_tracepoint("syscalls", "sys_enter_bind")
+        .with_tracepoint("syscalls", "sys_enter_connect")
+        .with_tracepoint("syscalls", "sys_enter_recvfrom")
+        .with_tracepoint("syscalls", "sys_enter_sendto")
         .with_tracepoint("syscalls", "sys_exit_bind")
+        .with_tracepoint("syscalls", "sys_exit_connect")
+        .with_tracepoint("syscalls", "sys_exit_recvfrom")
+        .with_tracepoint("syscalls", "sys_exit_sendto")
         .with_tracepoint("sock", "inet_sock_set_state")
         .build();
     attacher.attach_tracepoints()?;
