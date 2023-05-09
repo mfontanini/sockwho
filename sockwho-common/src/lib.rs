@@ -9,7 +9,7 @@ pub struct SockaddrEvent {
     pub port: u16,
     pub family: AddressFamily,
     pub syscall: Syscall,
-    pub return_value: i32,
+    pub errno: i32,
     pub command: [u8; 16],
 }
 

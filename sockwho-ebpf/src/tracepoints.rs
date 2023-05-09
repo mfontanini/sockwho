@@ -1,7 +1,4 @@
-use crate::{
-    context::{TracePointContextWrapper, Wrap},
-    utils::as_pid,
-};
+use crate::{context::ReadField, utils::as_pid};
 use aya_bpf::{
     helpers::{bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_probe_read_user},
     macros::map,
@@ -91,7 +88,6 @@ fn sys_exit_sendto(ctx: TracePointContext) -> HandlerResult {
 
 #[sockwho_tracepoint]
 fn inet_sock_set_state(ctx: TracePointContext) -> HandlerResult {
-    let ctx = ctx.wrap();
     let pid = bpf_get_current_pid_tgid();
     let old_state = ctx.read_field(16)?;
     let new_state = ctx.read_field(20)?;
@@ -117,13 +113,12 @@ fn inet_sock_set_state(ctx: TracePointContext) -> HandlerResult {
         command,
         _padding: 0,
     };
-    unsafe { SOCKET_STATE_EVENTS.output(ctx.inner(), &event, 0) };
+    unsafe { SOCKET_STATE_EVENTS.output(&ctx, &event, 0) };
 
     Ok(())
 }
 
 fn syscall_enter(ctx: TracePointContext, offsets: &ArgumentOffsets, syscall: Syscall) -> HandlerResult {
-    let ctx = ctx.wrap();
     let pid = bpf_get_current_pid_tgid();
     let fd: i32 = ctx.read_field(offsets.fd)?;
     if fd == -1 {
@@ -139,21 +134,22 @@ fn syscall_enter(ctx: TracePointContext, offsets: &ArgumentOffsets, syscall: Sys
     let (address, port) = read_sockaddr(&family, sockaddr)?;
     let command = bpf_get_current_comm()?;
 
-    let event =
-        SockaddrEvent { pid: as_pid(pid), fd: fd as u32, address, port, family, syscall, return_value: 0, command };
+    let event = SockaddrEvent { pid: as_pid(pid), fd: fd as u32, address, port, family, syscall, errno: 0, command };
     unsafe { PID_EVENT.insert(&pid, &event, 0) }?;
 
     Ok(())
 }
 
 fn syscall_exit(ctx: TracePointContext) -> HandlerResult {
-    let ctx = ctx.wrap();
-    let return_value = ctx.read_field(16)?;
+    let return_value: i64 = ctx.read_field(16)?;
 
     let pid = bpf_get_current_pid_tgid();
     let mut event = unsafe { &mut *PID_EVENT.get_ptr_mut(&pid).ok_or(1)? };
-    event.return_value = return_value;
-    unsafe { SOCKADDR_EVENTS.output(ctx.inner(), &event, 0) };
+    event.errno = return_value as i32;
+    // TODO: check this
+    event.command = bpf_get_current_comm()?;
+    unsafe { SOCKADDR_EVENTS.output(&ctx, &event, 0) };
+    unsafe { PID_EVENT.remove(&pid)? };
 
     Ok(())
 }
@@ -173,7 +169,7 @@ fn read_sockaddr(family: &AddressFamily, sockaddr: *const u8) -> Result<([u8; 16
     }
 }
 
-fn read_address_pair(family: &AddressFamily, ctx: &TracePointContextWrapper) -> Result<([u8; 16], [u8; 16]), u32> {
+fn read_address_pair(family: &AddressFamily, ctx: &TracePointContext) -> Result<([u8; 16], [u8; 16]), u32> {
     match family {
         AddressFamily::Ipv4 => {
             let s: [u8; 4] = ctx.read_field(32)?;

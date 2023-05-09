@@ -1,10 +1,13 @@
-use crate::bpf::BpfEvent;
+use crate::{bpf::BpfEvent, errno::Errno};
 use anyhow::anyhow;
 use enum_primitive_derive::Primitive;
 use log::warn;
 use num_traits::FromPrimitive;
 use sockwho_common::{AddressFamily, SockaddrEvent, SocketStateEvent, Syscall};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    fmt::{self},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 pub struct EventProcessorConfig {
@@ -39,12 +42,13 @@ impl EventProcessor {
     }
 
     fn process_sockaddr_event(&self, event: SockaddrEvent) -> anyhow::Result<()> {
-        let SockaddrEvent { pid, fd, address, port, family, syscall, return_value, command } = &event;
+        let SockaddrEvent { pid, fd, address, port, family, syscall, errno, command } = &event;
         let command = String::from_utf8_lossy(command);
         let syscall = syscall_name(syscall);
         let address = parse_address(family, address);
         let port = port.to_be();
-        println!("{command}/{pid}/{fd} syscal::{syscall}({address}:{port}) = {return_value}");
+        let errno = ErrnoDisplay(*errno);
+        println!("{command}/{pid}/{fd} syscal::{syscall}({address}:{port}) = {errno}");
         Ok(())
     }
 
@@ -87,6 +91,18 @@ fn syscall_name(syscall: &Syscall) -> &'static str {
         Connect => "connect",
         RecvFrom => "recv_from",
         SendTo => "send_to",
+    }
+}
+
+struct ErrnoDisplay(i32);
+
+impl fmt::Display for ErrnoDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+        if let Some(errno) = Errno::from_i32(-self.0) {
+            write!(f, " [{:?}]", errno)?;
+        }
+        Ok(())
     }
 }
 
