@@ -2,7 +2,7 @@ use anyhow::Error;
 use aya::{include_bytes_aligned, Bpf};
 use clap::Parser;
 use sockwho::{
-    attach::ProbeAttacherBuilder,
+    attach::{ProbeAttacherBuilder, Tracepoint},
     monitor::{Monitor, MonitoredQueue},
     processor::{EventProcessor, EventProcessorConfig},
 };
@@ -28,15 +28,11 @@ async fn main() -> Result<(), Error> {
     let mut bpf = load_bpf()?;
 
     let mut attacher = ProbeAttacherBuilder::new(&mut bpf)
-        .with_tracepoint("syscalls", "sys_enter_bind")
-        .with_tracepoint("syscalls", "sys_enter_connect")
-        .with_tracepoint("syscalls", "sys_enter_recvfrom")
-        .with_tracepoint("syscalls", "sys_enter_sendto")
-        .with_tracepoint("syscalls", "sys_exit_bind")
-        .with_tracepoint("syscalls", "sys_exit_connect")
-        .with_tracepoint("syscalls", "sys_exit_recvfrom")
-        .with_tracepoint("syscalls", "sys_exit_sendto")
-        .with_tracepoint("sock", "inet_sock_set_state")
+        .with_tracepoint(Tracepoint::syscall("bind"))
+        .with_tracepoint(Tracepoint::syscall("connect"))
+        .with_tracepoint(Tracepoint::syscall("recvfrom"))
+        .with_tracepoint(Tracepoint::syscall("sendto"))
+        .with_tracepoint(Tracepoint::socket("inet_sock_set_state"))
         .build();
     attacher.attach_tracepoints()?;
 

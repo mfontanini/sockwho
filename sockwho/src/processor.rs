@@ -48,7 +48,7 @@ impl EventProcessor {
         let address = parse_address(family, address);
         let port = port.to_be();
         let errno = ErrnoDisplay(*errno);
-        println!("{command}/{pid}/{fd} syscal::{syscall}({address}:{port}) = {errno}");
+        println!("{command}/{pid}/{fd} syscall::{syscall}({address}:{port}) = {errno}");
         Ok(())
     }
 

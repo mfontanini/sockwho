@@ -1,26 +1,23 @@
 use anyhow::{anyhow, Error};
 use aya::{programs::TracePoint, Bpf};
-
-/// Metadata about a tracepoint.
-pub struct TracepointMeta {
-    category: String,
-    name: String,
-}
+use log::info;
 
 /// Attaches probes.
 pub struct ProbeAttacher<'a> {
     bpf: &'a mut Bpf,
-    tracepoints: Vec<TracepointMeta>,
+    tracepoints: Vec<Tracepoint>,
 }
 
 impl<'a> ProbeAttacher<'a> {
     pub fn attach_tracepoints(&mut self) -> Result<(), Error> {
         for tracepoint in &self.tracepoints {
-            let name = &tracepoint.name;
-            let program: &mut TracePoint =
-                self.bpf.program_mut(name).ok_or_else(|| anyhow!("program '{name}' not found"))?.try_into()?;
-            program.load()?;
-            program.attach(&tracepoint.category, &tracepoint.name)?;
+            for symbol in tracepoint.symbols() {
+                info!("Attaching tracepoint '{symbol}");
+                let program: &mut TracePoint =
+                    self.bpf.program_mut(&symbol).ok_or_else(|| anyhow!("program '{symbol}' not found"))?.try_into()?;
+                program.load()?;
+                program.attach(tracepoint.category(), &symbol)?;
+            }
         }
         Ok(())
     }
@@ -38,18 +35,44 @@ impl<'a> ProbeAttacherBuilder<'a> {
     }
 
     /// Adds a tracepoint to be attached.
-    pub fn with_tracepoint<S1, S2>(mut self, category: S1, name: S2) -> Self
-    where
-        S1: Into<String>,
-        S2: Into<String>,
-    {
-        let meta = TracepointMeta { category: category.into(), name: name.into() };
-        self.attacher.tracepoints.push(meta);
+    pub fn with_tracepoint(mut self, tracepoint: Tracepoint) -> Self {
+        self.attacher.tracepoints.push(tracepoint);
         self
     }
 
     /// Builds the probe attacher.
     pub fn build(self) -> ProbeAttacher<'a> {
         self.attacher
+    }
+}
+
+pub enum Tracepoint {
+    Syscall(String),
+    Socket(String),
+}
+
+impl Tracepoint {
+    pub fn syscall<S: Into<String>>(name: S) -> Self {
+        Self::Syscall(name.into())
+    }
+
+    pub fn socket<S: Into<String>>(name: S) -> Self {
+        Self::Socket(name.into())
+    }
+
+    fn category(&self) -> &'static str {
+        match self {
+            Self::Syscall(_) => "syscalls",
+            Self::Socket(_) => "sock",
+        }
+    }
+
+    fn symbols(&self) -> Vec<String> {
+        match self {
+            Self::Syscall(name) => {
+                vec![format!("sys_enter_{name}"), format!("sys_exit_{name}")]
+            }
+            Self::Socket(name) => vec![name.clone()],
+        }
     }
 }
