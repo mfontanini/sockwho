@@ -12,7 +12,7 @@ impl<'a> ProbeAttacher<'a> {
     pub fn attach_tracepoints(&mut self) -> Result<(), Error> {
         for tracepoint in &self.tracepoints {
             for symbol in tracepoint.symbols() {
-                info!("Attaching tracepoint '{symbol}");
+                info!("Attaching tracepoint '{symbol}'");
                 let program: &mut TracePoint =
                     self.bpf.program_mut(&symbol).ok_or_else(|| anyhow!("program '{symbol}' not found"))?.try_into()?;
                 program.load()?;

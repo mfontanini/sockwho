@@ -1,6 +1,6 @@
 use anyhow::Error;
 use aya::{include_bytes_aligned, Bpf};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use sockwho::{
     attach::{ProbeAttacherBuilder, Tracepoint},
     monitor::{Monitor, MonitoredQueue},
@@ -9,7 +9,39 @@ use sockwho::{
 use sockwho_common::{SockaddrEvent, SocketStateEvent};
 
 #[derive(Debug, Parser)]
-struct Opt {}
+struct Cli {
+    /// The hooks to use.
+    #[arg(value_enum, default_values_t = Hook::all())]
+    hooks: Vec<Hook>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum Hook {
+    Bind,
+    Connect,
+    RecvFrom,
+    SendTo,
+    SocketState,
+}
+
+impl Hook {
+    fn all() -> Vec<Hook> {
+        vec![Hook::Bind, Hook::Connect, Hook::RecvFrom, Hook::SendTo, Hook::SocketState]
+    }
+}
+
+impl From<Hook> for Tracepoint {
+    fn from(hook: Hook) -> Self {
+        use Hook::*;
+        match hook {
+            Bind => Tracepoint::syscall("bind"),
+            Connect => Tracepoint::syscall("connect"),
+            RecvFrom => Tracepoint::syscall("recvfrom"),
+            SendTo => Tracepoint::syscall("sendto"),
+            SocketState => Tracepoint::socket("inet_sock_set_state"),
+        }
+    }
+}
 
 fn load_bpf() -> Result<Bpf, Error> {
     #[cfg(debug_assertions)]
@@ -25,15 +57,18 @@ fn load_bpf() -> Result<Bpf, Error> {
 async fn main() -> Result<(), Error> {
     env_logger::init();
 
-    let mut bpf = load_bpf()?;
+    let cli = Cli::parse();
 
-    let mut attacher = ProbeAttacherBuilder::new(&mut bpf)
-        .with_tracepoint(Tracepoint::syscall("bind"))
-        .with_tracepoint(Tracepoint::syscall("connect"))
-        .with_tracepoint(Tracepoint::syscall("recvfrom"))
-        .with_tracepoint(Tracepoint::syscall("sendto"))
-        .with_tracepoint(Tracepoint::socket("inet_sock_set_state"))
-        .build();
+    let mut hooks = cli.hooks;
+    hooks.sort();
+    hooks.dedup();
+
+    let mut bpf = load_bpf()?;
+    let mut builder = ProbeAttacherBuilder::new(&mut bpf);
+    for hook in hooks {
+        builder = builder.with_tracepoint(hook.into());
+    }
+    let mut attacher = builder.build();
     attacher.attach_tracepoints()?;
 
     let config = EventProcessorConfig { channel_size: 1024 };
