@@ -9,8 +9,9 @@ pub struct SockaddrEvent {
     pub port: u16,
     pub family: AddressFamily,
     pub syscall: Syscall,
-    pub errno: i32,
+    pub _padding: u32,
     pub command: [u8; 16],
+    pub return_value: i64,
 }
 
 #[derive(Clone, Debug)]

@@ -42,13 +42,13 @@ impl EventProcessor {
     }
 
     fn process_sockaddr_event(&self, event: SockaddrEvent) -> anyhow::Result<()> {
-        let SockaddrEvent { pid, fd, address, port, family, syscall, errno, command } = &event;
+        let SockaddrEvent { pid, fd, address, port, family, syscall, return_value, command, .. } = &event;
         let command = String::from_utf8_lossy(command);
         let syscall = syscall_name(syscall);
         let address = parse_address(family, address);
         let port = port.to_be();
-        let errno = ErrnoDisplay(*errno);
-        println!("{command}/{pid}/{fd} syscall::{syscall}({address}:{port}) = {errno}");
+        let return_value = ReturnValueDisplay(*return_value);
+        println!("{command}/{pid}/{fd} syscall::{syscall}({address}:{port}) = {return_value}");
         Ok(())
     }
 
@@ -94,12 +94,12 @@ fn syscall_name(syscall: &Syscall) -> &'static str {
     }
 }
 
-struct ErrnoDisplay(i32);
+struct ReturnValueDisplay(i64);
 
-impl fmt::Display for ErrnoDisplay {
+impl fmt::Display for ReturnValueDisplay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)?;
-        if let Some(errno) = Errno::from_i32(-self.0) {
+        if let Some(errno) = Errno::from_i64(-self.0) {
             write!(f, " [{:?}]", errno)?;
         }
         Ok(())

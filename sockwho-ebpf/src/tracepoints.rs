@@ -134,20 +134,28 @@ fn syscall_enter(ctx: TracePointContext, offsets: &ArgumentOffsets, syscall: Sys
     let (address, port) = read_sockaddr(&family, sockaddr)?;
     let command = bpf_get_current_comm()?;
 
-    let event = SockaddrEvent { pid: as_pid(pid), fd: fd as u32, address, port, family, syscall, errno: 0, command };
+    let event = SockaddrEvent {
+        pid: as_pid(pid),
+        fd: fd as u32,
+        address,
+        port,
+        family,
+        syscall,
+        return_value: 0,
+        _padding: 0,
+        command,
+    };
     unsafe { PID_EVENT.insert(&pid, &event, 0) }?;
 
     Ok(())
 }
 
 fn syscall_exit(ctx: TracePointContext) -> HandlerResult {
-    let return_value: i64 = ctx.read_field(16)?;
-
     let pid = bpf_get_current_pid_tgid();
     let mut event = unsafe { &mut *PID_EVENT.get_ptr_mut(&pid).ok_or(1)? };
-    event.errno = return_value as i32;
-    // TODO: check this
+    event.return_value = ctx.read_field(16)?;
     event.command = bpf_get_current_comm()?;
+
     unsafe { SOCKADDR_EVENTS.output(&ctx, &event, 0) };
     unsafe { PID_EVENT.remove(&pid)? };
 
